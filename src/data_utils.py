@@ -37,8 +37,9 @@ class SaltData(object):
 
     def load_train(self):
         # Just load the data into a numpy dataset, it ain't that big
-        logging.info(f"Loading train images from {self.path_to_train_images} "
-                     f"and masks from {self.path_to_train_masks}")
+        logging.info("Loading train images from {self.path_to_train_images} "
+                     "and masks from {self.path_to_train_masks}"
+                     "".format(**locals()))
         img_paths = sorted(glob(self.glob_train_images))
         mask_paths = set(glob(self.glob_train_masks))  # Use set to look up
         # Initialize the numpy data containers
@@ -54,7 +55,8 @@ class SaltData(object):
             mask_path = os.path.join(self.path_to_train_masks, img_basename)
             # Use the 0 mask if its not there
             if mask_path not in mask_paths:
-                logging.info(f"Could not find {img_basename} in masks")
+                logging.info("Could not find {img_basename} in masks"
+                             "".format(**locals()))
                 continue
             y[i] = ImageDataset.load_img(
                 mask_path, img_size=self.img_size, mode="gray")[0]
@@ -62,7 +64,7 @@ class SaltData(object):
 
     def load_test(self):
         # Just load the data into a numpy dataset, it ain't that big
-        logging.info(f"Loading test images from {self.path_to_test_images}")
+        logging.info("Loading test images from {self.path_to_test_images}".format(**locals()))
         img_paths = sorted(glob(self.glob_train_images))
         # Initialize the numpy data containers
         x = np.zeros((len(img_paths), ) + self.img_size + (3, ))

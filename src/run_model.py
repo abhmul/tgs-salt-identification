@@ -41,8 +41,8 @@ def train_model(model: Model,
                 batch_size=BATCH_SIZE):
 
     # Create the generators
-    logging.info(f"Training model for {epochs} epochs and {batch_size} batch "
-                 "size")
+    logging.info("Training model for {epochs} epochs and {batch_size} batch "
+                 "size".format(**locals()))
     logging.info("Flowing the train and validation sets")
     traingen = trainset.flow(
         batch_size=batch_size, shuffle=True, seed=utils.get_random_seed())
@@ -78,7 +78,7 @@ def train_model(model: Model,
 
 
 def test_model(model: Model, test_data: NpDataset, batch_size=BATCH_SIZE):
-    logging.info(f"Testing model with batch size of {batch_size}")
+    logging.info("Testing model with batch size of {batch_size}".format(**locals()))
     logging.info("Flowing the test set")
     test_data.output_labels = False
     testgen = test_data.flow(batch_size=batch_size, shuffle=False)
