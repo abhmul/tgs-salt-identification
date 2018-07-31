@@ -1,7 +1,5 @@
 import logging
 import argparse
-import numpy as np
-import matplotlib.pyplot as plt
 
 from pyjet.callbacks import Plotter, ModelCheckpoint
 from pyjet.data import NpDataset
