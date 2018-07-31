@@ -90,16 +90,6 @@ def test_model(model: SLModel, test_data: NpDataset, batch_size=BATCH_SIZE):
 
 def train(data: SaltData):
     train_data = data.load_train()
-
-    # Visualize an image
-    ind = np.random.randint(len(train_data))
-    fig = plt.figure()
-    fig.add_subplot(1, 2, 0)
-    plt.imshow(train_data.x[ind])
-    fig.add_subplot(1, 2, 1)
-    plt.imshow(train_data.y[ind, ..., 0], cmap='gray')
-    plt.show()
-
     model = MODEL()
     train_data, val_data = train_data.validation_split(
         split=0.1, shuffle=True, seed=SPLIT_SEED)
