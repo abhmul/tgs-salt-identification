@@ -5,7 +5,7 @@ from glob import glob
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from skimage.morphology import label
+from skimage.transform import resize
 
 from pyjet.data import ImageDataset, NpDataset
 
@@ -14,6 +14,7 @@ from kaggleutils import dump_args
 # All images should be 101 x 101
 ORIG_IMG_SIZE = (101, 101)
 IMG_SIZE = (128, 128)
+EMPTY_THRESHOLD = 5
 
 
 class SaltData(object):
@@ -60,11 +61,14 @@ class SaltData(object):
                 continue
             y[i] = ImageDataset.load_img(
                 mask_path, img_size=self.img_size, mode="gray")[0]
-        return NpDataset(x, y, ids=np.array(ids))
+        print("X shape:", x.shape)
+        print("Y Shape:", y.shape)
+        return NpDataset(x.astype('float32'), y.astype('float32'), ids=np.array(ids))
 
     def load_test(self):
         # Just load the data into a numpy dataset, it ain't that big
-        logging.info("Loading test images from {self.path_to_test_images}".format(**locals()))
+        logging.info(
+            "Loading test images from {self.path_to_test_images}".format(**locals()))
         img_paths = sorted(glob(self.glob_train_images))
         # Initialize the numpy data containers
         x = np.zeros((len(img_paths), ) + self.img_size + (3, ))
@@ -75,16 +79,20 @@ class SaltData(object):
             # Load the mask
             img_basename = os.path.basename(img_path)
             ids.append(os.path.splitext(img_basename)[0])
-        return NpDataset(x, ids=np.array(ids))
+        return NpDataset(x.astype('float32'), ids=np.array(ids))
 
     @staticmethod
     def save_submission(save_name, preds, test_ids, cutoff=0.5):
         new_test_ids = []
         rles = []
         for n, id_ in enumerate(tqdm(test_ids)):
-            rle = list(prob_to_rles(preds[n], cutoff=cutoff))
+            pred = resize(preds[n], ORIG_IMG_SIZE,
+                          mode='constant', preserve_range=True) >= cutoff
+            if np.sum(pred) < EMPTY_THRESHOLD:
+                continue
+            rle = rle_encoding(pred)
             rles += rle
-            new_test_ids += ([id_] * len(rle))
+            new_test_ids += id_
 
         # Create submission DataFrame
         sub = pd.DataFrame()
@@ -105,9 +113,3 @@ def rle_encoding(x):
         run_lengths[-1] += 1
         prev = b
     return run_lengths
-
-
-def prob_to_rles(x, cutoff=0.5):
-    lab_img = label(x > cutoff)
-    for i in range(1, lab_img.max() + 1):
-        yield rle_encoding(lab_img == i)

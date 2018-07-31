@@ -103,8 +103,11 @@ venv.bak/
 # mypy
 .mypy_cache/
 
-# Competition Data
-input/
+# Competition Stuff
+/input
+/submissions
+/models
+/plots
 
 # Mac Stuff
 .DS_Store

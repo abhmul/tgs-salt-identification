@@ -1,14 +1,14 @@
 import logging
 import argparse
-from functools import partial
+import numpy as np
+import matplotlib.pyplot as plt
 
-from keras.models import Model
-from keras.callbacks import ModelCheckpoint
-from pyjet.callbacks import Plotter
+from pyjet.callbacks import Plotter, ModelCheckpoint
 from pyjet.data import NpDataset
+from pyjet.models import SLModel
 
 import kaggleutils as utils
-from data_utils import SaltData, IMG_SIZE
+from data_utils import SaltData
 import models
 
 parser = argparse.ArgumentParser(description='Run the models.')
@@ -25,16 +25,16 @@ parser.add_argument('--plot', action="store_true", help="Whether to plot the tra
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
-MODEL = partial(models.unet, img_size=IMG_SIZE)
+MODEL = models.unet
 RUN_ID = "unet-test"
 SEED = 42
 BATCH_SIZE = 32
-EPOCHS = 1
+EPOCHS = 50
 utils.set_random_seed(SEED)
 SPLIT_SEED = utils.get_random_seed()
 
 
-def train_model(model: Model,
+def train_model(model: SLModel,
                 trainset: NpDataset,
                 valset: NpDataset,
                 epochs=EPOCHS,
@@ -72,12 +72,13 @@ def train_model(model: Model,
         validation_data=valgen,
         validation_steps=valgen.steps_per_epoch,
         callbacks=callbacks,
+        metrics=["iou"],
         verbose=1)
 
     return logs
 
 
-def test_model(model: Model, test_data: NpDataset, batch_size=BATCH_SIZE):
+def test_model(model: SLModel, test_data: NpDataset, batch_size=BATCH_SIZE):
     logging.info("Testing model with batch size of {batch_size}".format(**locals()))
     logging.info("Flowing the test set")
     test_data.output_labels = False
@@ -89,6 +90,16 @@ def test_model(model: Model, test_data: NpDataset, batch_size=BATCH_SIZE):
 
 def train(data: SaltData):
     train_data = data.load_train()
+
+    # Visualize an image
+    ind = np.random.randint(len(train_data))
+    fig = plt.figure()
+    fig.add_subplot(1, 2, 0)
+    plt.imshow(train_data.x[ind])
+    fig.add_subplot(1, 2, 1)
+    plt.imshow(train_data.y[ind, ..., 0], cmap='gray')
+    plt.show()
+
     model = MODEL()
     train_data, val_data = train_data.validation_split(
         split=0.1, shuffle=True, seed=SPLIT_SEED)
