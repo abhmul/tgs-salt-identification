@@ -128,14 +128,14 @@ class UNet9(SLModel):
         self.e2 = EncoderBlock(num_filters, dropout=0.1)
         num_filters *= factor
         self.e3 = EncoderBlock(num_filters, dropout=0.2)
-        # num_filters *= factor
-        # self.e4 = EncoderBlock(num_filters, dropout=0.2)
+        num_filters *= factor
+        self.e4 = EncoderBlock(num_filters, dropout=0.2)
 
         num_filters *= factor
-        self.neck = DilationNeck(num_filters, dropout=0.0)
+        self.neck = BasicNeck(num_filters, dropout=0.3)
 
-        # num_filters //= factor
-        # self.d1 = DecoderBlock(num_filters, dropout=0.2)
+        num_filters //= factor
+        self.d1 = DecoderBlock(num_filters, dropout=0.2)
         num_filters //= factor
         self.d2 = DecoderBlock(num_filters, dropout=0.2)
         num_filters //= factor
@@ -152,22 +152,24 @@ class UNet9(SLModel):
         self.add_optimizer(torch.optim.Adam(self.parameters()))
 
     def forward(self, x):
+        # Fix input to channels_first
         res0 = self.s(self.s.fix_input(x))
         x = self.upsampler(res0)
 
         x, res1 = self.e1(x)
         x, res2 = self.e2(x)
         x, res3 = self.e3(x)
-        # x, res4 = self.e4(x)
+        x, res4 = self.e4(x)
 
         x = self.neck(x)
 
-        # x = self.d1(x, res4)
+        x = self.d1(x, res4)
         x = self.d2(x, res3)
         x = self.d3(x, res2)
         x = self.d4(x, res1)
 
         x = torch.cat([self.downsampler(x), res0], dim=1)
+        # Unfix it back to channels_last
         self.logit = self.o.unfix_input(self.o(x))
         self.expit = torch.sigmoid(self.logit)
 
