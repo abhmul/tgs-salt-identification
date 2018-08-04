@@ -67,9 +67,9 @@ class SaltData(object):
 
     def load_test(self):
         # Just load the data into a numpy dataset, it ain't that big
-        logging.info(
-            "Loading test images from {self.path_to_test_images}".format(**locals()))
-        img_paths = sorted(glob(self.glob_train_images))
+        logging.info("Loading test images from {self.path_to_test_images}"
+                     " and glob {self.glob_test_images}".format(**locals()))
+        img_paths = sorted(glob(self.glob_test_images))
         # Initialize the numpy data containers
         x = np.zeros((len(img_paths), ) + self.img_size + (3, ))
         ids = []
@@ -88,11 +88,12 @@ class SaltData(object):
         for n, id_ in enumerate(tqdm(test_ids)):
             pred = resize(preds[n], ORIG_IMG_SIZE,
                           mode='constant', preserve_range=True) >= cutoff
-            if np.sum(pred) < EMPTY_THRESHOLD:
-                continue
-            rle = rle_encoding(pred)
-            rles += rle
-            new_test_ids += id_
+            if np.count_nonzero(pred) < EMPTY_THRESHOLD:
+                rle = []
+            else:
+                rle = rle_encoding(pred)
+            rles.append(rle)
+            new_test_ids.append(id_)
 
         # Create submission DataFrame
         sub = pd.DataFrame()
@@ -108,6 +109,7 @@ def rle_encoding(x):
     run_lengths = []
     prev = -2
     for b in dots:
+        # Figure out if we need to start a new run length
         if (b > prev + 1):
             run_lengths.extend((b + 1, 0))
         run_lengths[-1] += 1

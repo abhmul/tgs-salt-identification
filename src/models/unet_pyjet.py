@@ -1,81 +1,122 @@
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 from pyjet.layers import Conv2D, MaxPooling2D, UpSampling2D, Input
 from pyjet.models import SLModel
 from kaggleutils import dump_args
 
-
-def get_loss(loss):
-    # TODO: Fill in with multiple kinds of losses
-    return loss
+from .losses_pyjet import weighted_bce_loss, weighted_dice_loss, dice_loss
 
 
-class UNet(SLModel):
+class EncoderBlock(nn.Module):
+
+    def __init__(self, num_filters, dropout, kernel_size=3, activation='relu',
+                 batchnorm=True, pool_size=2):
+        super(EncoderBlock, self).__init__()
+        self.num_filters = num_filters
+        self.dropout = dropout
+        self.kernel_size = kernel_size
+        self.activation = activation
+        self.batchnorm = batchnorm
+        self.pool_size = pool_size
+
+        self.c1 = Conv2D(num_filters, kernel_size, activation=activation,
+                         batchnorm=batchnorm, dropout=dropout)
+        self.c2 = Conv2D(num_filters, kernel_size, activation=activation,
+                         batchnorm=batchnorm)
+        self.p = MaxPooling2D(pool_size)
+
+    def forward(self, x):
+        residual = self.c2(self.c1(x))
+        x = self.p(residual)
+        return x, residual
+
+
+class DecoderBlock(nn.Module):
+
+    def __init__(self, num_filters, dropout, kernel_size=3, activation='relu',
+                 batchnorm=True, scale_factor=2., pool_size=2):
+        super(DecoderBlock, self).__init__()
+        self.num_filters = num_filters
+        self.dropout = dropout
+        self.kernel_size = kernel_size
+        self.activation = activation
+        self.batchnorm = batchnorm
+        self.scale_factor = scale_factor
+
+        self.c1 = Conv2D(num_filters, kernel_size, activation=activation,
+                         batchnorm=batchnorm, dropout=dropout)
+        self.c2 = Conv2D(num_filters, kernel_size, activation=activation,
+                         batchnorm=batchnorm)
+        self.u = UpSampling2D(scale_factor=scale_factor)
+
+    def forward(self, x, residual):
+        x = torch.cat([self.u(x), residual], dim=1)
+        x = self.c2(self.c1(x))
+        return x
+
+
+class BasicNeck(nn.Module):
+
+    def __init__(self, num_filters, dropout=0.3, kernel_size=3,
+                 activation='relu', batchnorm=True):
+        super(BasicNeck, self).__init__()
+        self.num_filters = num_filters
+        self.dropout = dropout
+        self.kernel_size = kernel_size
+        self.activation = activation
+        self.batchnorm = batchnorm
+
+        self.c1 = Conv2D(num_filters, kernel_size, activation=activation,
+                         batchnorm=batchnorm, dropout=dropout)
+        self.c2 = Conv2D(num_filters, kernel_size, activation=activation,
+                         batchnorm=batchnorm)
+
+    def forward(self, x):
+        return self.c2(self.c1(x))
+
+
+class UNet9(SLModel):
 
     @dump_args
     def __init__(self,
-                 num_filters=8,
+                 num_filters=16,
                  factor=2,
                  num_channels=3):
-        super(UNet, self).__init__()
+        super(UNet9, self).__init__()
         self.num_filters = num_filters
         self.factor = factor
         self.num_channels = num_channels
 
         # Add the loss
-        self.add_loss(F.binary_cross_entropy_with_logits, inputs='logit')
+        self.add_loss(F.binary_cross_entropy_with_logits, inputs='logit', name="bce")
+        self.add_loss(dice_loss, inputs='expit', name="dice")
+        # self.add_loss(weighted_bce_loss, inputs='logit', name="bce")
+        # self.add_loss(weighted_dice_loss, inputs='expit', name="dice", weight=0.)
 
         # Create the layers
         self.s = Conv2D(num_filters, 1, batchnorm=True)
-        self.c11 = Conv2D(num_filters, 3, activation='relu',
-                          batchnorm=True, dropout=0.1)
-        self.c12 = Conv2D(num_filters, 3, activation='relu', batchnorm=True)
+        self.e1 = EncoderBlock(num_filters, dropout=0.1)
+        num_filters *= factor
+        self.e2 = EncoderBlock(num_filters, dropout=0.1)
+        num_filters *= factor
+        self.e3 = EncoderBlock(num_filters, dropout=0.2)
+        num_filters *= factor
+        self.e4 = EncoderBlock(num_filters, dropout=0.2)
 
         num_filters *= factor
-        self.c21 = Conv2D(num_filters, 3, activation='relu',
-                          batchnorm=True, dropout=0.1)
-        self.c22 = Conv2D(num_filters, 3, activation='relu', batchnorm=True)
-
-        num_filters *= factor
-        self.c31 = Conv2D(num_filters, 3, activation='relu',
-                          batchnorm=True, dropout=0.2)
-        self.c32 = Conv2D(num_filters, 3, activation='relu', batchnorm=True)
-
-        num_filters *= factor
-        self.c41 = Conv2D(num_filters, 3, activation='relu',
-                          batchnorm=True, dropout=0.2)
-        self.c42 = Conv2D(num_filters, 3, activation='relu', batchnorm=True)
-
-        num_filters *= factor
-        self.c51 = Conv2D(num_filters, 3, activation='relu',
-                          batchnorm=True, dropout=0.3)
-        self.c52 = Conv2D(num_filters, 3, activation='relu', batchnorm=True)
+        self.neck = BasicNeck(num_filters)
 
         num_filters //= factor
-        self.c61 = Conv2D(num_filters, 3, activation='relu',
-                          batchnorm=True, dropout=0.2)
-        self.c62 = Conv2D(num_filters, 3, activation='relu', batchnorm=True)
-
+        self.d1 = DecoderBlock(num_filters, dropout=0.2)
         num_filters //= factor
-        self.c71 = Conv2D(num_filters, 3, activation='relu',
-                          batchnorm=True, dropout=0.2)
-        self.c72 = Conv2D(num_filters, 3, activation='relu', batchnorm=True)
-
+        self.d2 = DecoderBlock(num_filters, dropout=0.2)
         num_filters //= factor
-        self.c81 = Conv2D(num_filters, 3, activation='relu',
-                          batchnorm=True, dropout=0.1)
-        self.c82 = Conv2D(num_filters, 3, activation='relu', batchnorm=True)
-
+        self.d3 = DecoderBlock(num_filters, dropout=0.1)
         num_filters //= factor
-        self.c91 = Conv2D(num_filters, 3, activation='relu',
-                          batchnorm=True, dropout=0.1)
-        self.c92 = Conv2D(num_filters, 3, activation='relu', batchnorm=True)
-
+        self.d4 = DecoderBlock(num_filters, dropout=0.1)
         self.o = Conv2D(1, 1, activation='linear')
-
-        self.p = MaxPooling2D(2)
-        self.u = UpSampling2D(scale_factor=2.)
 
         # Infer the inputs
         self.infer_inputs(Input(128, 128, 3))
@@ -85,34 +126,19 @@ class UNet(SLModel):
 
     def forward(self, x):
         x = self.s(self.s.fix_input(x))
+        x, res1 = self.e1(x)
+        x, res2 = self.e2(x)
+        x, res3 = self.e3(x)
+        x, res4 = self.e4(x)
 
-        c1 = self.c12(self.c11(x))
-        x = self.p(c1)
+        x = self.neck(x)
 
-        c2 = self.c22(self.c21(x))
-        x = self.p(c2)
+        x = self.d1(x, res4)
+        x = self.d2(x, res3)
+        x = self.d3(x, res2)
+        x = self.d4(x, res1)
 
-        c3 = self.c32(self.c31(x))
-        x = self.p(c3)
-
-        c4 = self.c42(self.c41(x))
-        x = self.p(c4)
-
-        c5 = self.c52(self.c51(x))
-
-        x = torch.cat([self.u(c5), c4], dim=1)
-        c6 = self.c62(self.c61(x))
-
-        x = torch.cat([self.u(c6), c3], dim=1)
-        c7 = self.c72(self.c71(x))
-
-        x = torch.cat([self.u(c7), c2], dim=1)
-        c8 = self.c82(self.c81(x))
-
-        x = torch.cat([self.u(c8), c1], dim=1)
-        c9 = self.c92(self.c91(x))
-
-        self.logit = self.o.unfix_input(self.o(c9))
+        self.logit = self.o.unfix_input(self.o(x))
         self.expit = torch.sigmoid(self.logit)
 
         return self.expit

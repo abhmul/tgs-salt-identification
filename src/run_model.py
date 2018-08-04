@@ -8,6 +8,7 @@ from pyjet.models import SLModel
 import kaggleutils as utils
 from data_utils import SaltData
 import models
+from metrics import mean_iou
 
 parser = argparse.ArgumentParser(description='Run the models.')
 # parser.add_argument('train_id', help='ID of the train configuration')
@@ -21,10 +22,12 @@ parser.add_argument('--plot', action="store_true", help="Whether to plot the tra
 # parser.add_argument('--use_iou', action='store_true', help="creates test predictions with iou checkpointed model.")
 # parser.add_argument('--test_debug', action='store_true', help="debugs the test output.")
 
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
 MODEL = models.unet
-RUN_ID = "unet-test"
+RUN_ID = "unet-test-hybrid-loss"
 SEED = 42
 BATCH_SIZE = 32
 EPOCHS = 50
@@ -36,7 +39,8 @@ def train_model(model: SLModel,
                 trainset: NpDataset,
                 valset: NpDataset,
                 epochs=EPOCHS,
-                batch_size=BATCH_SIZE):
+                batch_size=BATCH_SIZE,
+                plot=True):
 
     # Create the generators
     logging.info("Training model for {epochs} epochs and {batch_size} batch "
@@ -55,10 +59,20 @@ def train_model(model: SLModel,
             verbose=1,
             save_best_only=True),
         Plotter(
-            "loss",
+            "bce",
             scale='log',
-            plot_during_train=True,
-            save_to_file=utils.get_plot_path(RUN_ID),
+            plot_during_train=plot,
+            save_to_file=utils.get_plot_path(RUN_ID+"_bce"),
+            block_on_end=False),
+        Plotter(
+            "dice",
+            plot_during_train=plot,
+            save_to_file=utils.get_plot_path(RUN_ID+"_dice"),
+            block_on_end=False),
+        Plotter(
+            "iou",
+            plot_during_train=plot,
+            save_to_file=utils.get_plot_path(RUN_ID + "_iou"),
             block_on_end=False),
     ]
 
@@ -70,7 +84,7 @@ def train_model(model: SLModel,
         validation_data=valgen,
         validation_steps=valgen.steps_per_epoch,
         callbacks=callbacks,
-        metrics=["iou"],
+        metrics=["iou", mean_iou],
         verbose=1)
 
     return logs
@@ -83,15 +97,15 @@ def test_model(model: SLModel, test_data: NpDataset, batch_size=BATCH_SIZE):
     testgen = test_data.flow(batch_size=batch_size, shuffle=False)
     test_preds = model.predict_generator(
         testgen, testgen.steps_per_epoch, verbose=1)
-    return test_preds
+    return test_preds.squeeze(-1)
 
 
-def train(data: SaltData):
+def train(data: SaltData, plot=True):
     train_data = data.load_train()
     model = MODEL()
     train_data, val_data = train_data.validation_split(
         split=0.1, shuffle=True, seed=SPLIT_SEED)
-    train_model(model, train_data, val_data)
+    train_model(model, train_data, val_data, plot=plot)
     # Load the model and score it
     model.load_state(utils.get_model_path(RUN_ID))
     return model
@@ -117,6 +131,6 @@ if __name__ == "__main__":
     data = SaltData()
     model = None
     if args.train:
-        model = train(data)
+        model = train(data, plot=args.plot)
     if args.test:
         test(data, model=model)
