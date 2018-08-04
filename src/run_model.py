@@ -1,5 +1,6 @@
 import logging
 import argparse
+import numpy as np
 
 from pyjet.callbacks import Plotter, ModelCheckpoint
 from pyjet.data import NpDataset
@@ -104,7 +105,8 @@ def train(data: SaltData, plot=True):
     train_data = data.load_train()
     model = MODEL()
     train_data, val_data = train_data.validation_split(
-        split=0.1, shuffle=True, seed=SPLIT_SEED)
+        split=0.1, shuffle=True, seed=SPLIT_SEED, stratified=True,
+        stratify_by=np.all(train_data.y == 0., axis=(1, 2, 3)))
     train_model(model, train_data, val_data, plot=plot)
     # Load the model and score it
     model.load_state(utils.get_model_path(RUN_ID))
