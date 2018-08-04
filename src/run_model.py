@@ -28,7 +28,7 @@ logger.setLevel(logging.INFO)
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
 MODEL = models.unet
-RUN_ID = "unet-test-downsampler"
+RUN_ID = "unet-test-dilation-neck"
 SEED = 42
 BATCH_SIZE = 32
 EPOCHS = 1

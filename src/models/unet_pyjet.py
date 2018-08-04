@@ -77,6 +77,31 @@ class BasicNeck(nn.Module):
         return self.c2(self.c1(x))
 
 
+class DilationNeck(nn.Module):
+    def __init__(self, num_filters, dropout=0.3, depth=3, kernel_size=3,
+                 activation='relu', batchnorm=True):
+        super(DilationNeck, self).__init__()
+        self.num_filters = num_filters
+        self.dropout = dropout
+        self.depth = depth
+        self.kernel_size = kernel_size
+        self.activation = activation
+        self.batchnorm = batchnorm
+
+        self.dilated_layers = nn.ModuleList([
+            Conv2D(num_filters, kernel_size, activation=activation,
+                   padding='same', batchnorm=batchnorm, dropout=dropout,
+                   dilation=2**i)
+            for i in range(depth)])
+
+    def forward(self, x):
+        dilated_sum = 0.
+        for layer in self.dilated_layers:
+            x = layer(x)
+            dilated_sum += x
+        return dilated_sum
+
+
 class UNet9(SLModel):
 
     @dump_args
@@ -103,14 +128,14 @@ class UNet9(SLModel):
         self.e2 = EncoderBlock(num_filters, dropout=0.1)
         num_filters *= factor
         self.e3 = EncoderBlock(num_filters, dropout=0.2)
-        num_filters *= factor
-        self.e4 = EncoderBlock(num_filters, dropout=0.2)
+        # num_filters *= factor
+        # self.e4 = EncoderBlock(num_filters, dropout=0.2)
 
         num_filters *= factor
-        self.neck = BasicNeck(num_filters)
+        self.neck = DilationNeck(num_filters, dropout=0.0)
 
-        num_filters //= factor
-        self.d1 = DecoderBlock(num_filters, dropout=0.2)
+        # num_filters //= factor
+        # self.d1 = DecoderBlock(num_filters, dropout=0.2)
         num_filters //= factor
         self.d2 = DecoderBlock(num_filters, dropout=0.2)
         num_filters //= factor
@@ -133,11 +158,11 @@ class UNet9(SLModel):
         x, res1 = self.e1(x)
         x, res2 = self.e2(x)
         x, res3 = self.e3(x)
-        x, res4 = self.e4(x)
+        # x, res4 = self.e4(x)
 
         x = self.neck(x)
 
-        x = self.d1(x, res4)
+        # x = self.d1(x, res4)
         x = self.d2(x, res3)
         x = self.d3(x, res2)
         x = self.d4(x, res1)
