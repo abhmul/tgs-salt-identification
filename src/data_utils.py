@@ -19,7 +19,8 @@ EMPTY_THRESHOLD = 5
 
 class SaltData(object):
     @dump_args
-    def __init__(self, path_to_data="../input", mode="rgb", img_size=IMG_SIZE):
+    def __init__(self, path_to_data="../input", mode="rgb",
+                 img_size=ORIG_IMG_SIZE):
         self.path_to_data = path_to_data
         self.mode = mode
         self.img_size = img_size
@@ -49,7 +50,7 @@ class SaltData(object):
         ids = []
         for i, img_path in enumerate(tqdm(img_paths)):
             x[i] = ImageDataset.load_img(
-                img_path, img_size=self.img_size, mode=self.mode)[0]
+                img_path, img_size=None, mode=self.mode)[0]
             # Load the mask
             img_basename = os.path.basename(img_path)
             ids.append(os.path.splitext(img_basename)[0])
@@ -60,7 +61,7 @@ class SaltData(object):
                              "".format(**locals()))
                 continue
             y[i] = ImageDataset.load_img(
-                mask_path, img_size=self.img_size, mode="gray")[0]
+                mask_path, img_size=None, mode="gray")[0]
         print("X shape:", x.shape)
         print("Y Shape:", y.shape)
         return NpDataset(x.astype('float32'), y.astype('float32'), ids=np.array(ids))
@@ -75,19 +76,26 @@ class SaltData(object):
         ids = []
         for i, img_path in enumerate(tqdm(img_paths)):
             x[i] = ImageDataset.load_img(
-                img_path, img_size=self.img_size, mode=self.mode)[0]
+                img_path, img_size=None, mode=self.mode)[0]
             # Load the mask
             img_basename = os.path.basename(img_path)
             ids.append(os.path.splitext(img_basename)[0])
+        print("Xte Shape:", x.shape)
         return NpDataset(x.astype('float32'), ids=np.array(ids))
 
     @staticmethod
     def save_submission(save_name, preds, test_ids, cutoff=0.5):
         new_test_ids = []
         rles = []
+        # Figure out if we have to resize
+        resize_imgs = preds.shape[1:3] != ORIG_IMG_SIZE
+        logging.info("Resize the images: {}".format(resize_imgs))
         for n, id_ in enumerate(tqdm(test_ids)):
-            pred = resize(preds[n], ORIG_IMG_SIZE,
-                          mode='constant', preserve_range=True) >= cutoff
+            pred = preds[n]
+            if resize_imgs:
+                pred = resize(preds[n], ORIG_IMG_SIZE,
+                              mode='constant', preserve_range=True)
+            pred = pred >= cutoff
             if np.count_nonzero(pred) < EMPTY_THRESHOLD:
                 rle = []
             else:

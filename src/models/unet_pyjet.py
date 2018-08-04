@@ -97,6 +97,7 @@ class UNet9(SLModel):
 
         # Create the layers
         self.s = Conv2D(num_filters, 1, batchnorm=True)
+        self.upsampler = UpSampling2D(size=(128, 128))
         self.e1 = EncoderBlock(num_filters, dropout=0.1)
         num_filters *= factor
         self.e2 = EncoderBlock(num_filters, dropout=0.1)
@@ -116,16 +117,19 @@ class UNet9(SLModel):
         self.d3 = DecoderBlock(num_filters, dropout=0.1)
         num_filters //= factor
         self.d4 = DecoderBlock(num_filters, dropout=0.1)
+        self.downsampler = UpSampling2D(size=(101, 101))
         self.o = Conv2D(1, 1, activation='linear')
 
         # Infer the inputs
-        self.infer_inputs(Input(128, 128, 3))
+        self.infer_inputs(Input(101, 101, 3))
 
         # Add the optimizer
         self.add_optimizer(torch.optim.Adam(self.parameters()))
 
     def forward(self, x):
-        x = self.s(self.s.fix_input(x))
+        res0 = self.s(self.s.fix_input(x))
+        x = self.upsampler(res0)
+
         x, res1 = self.e1(x)
         x, res2 = self.e2(x)
         x, res3 = self.e3(x)
@@ -138,6 +142,7 @@ class UNet9(SLModel):
         x = self.d3(x, res2)
         x = self.d4(x, res1)
 
+        x = torch.cat([self.downsampler(x), res0], dim=1)
         self.logit = self.o.unfix_input(self.o(x))
         self.expit = torch.sigmoid(self.logit)
 

@@ -27,10 +27,10 @@ logger.setLevel(logging.INFO)
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
 MODEL = models.unet
-RUN_ID = "unet-test-hybrid-loss"
+RUN_ID = "unet-test-downsampler"
 SEED = 42
 BATCH_SIZE = 32
-EPOCHS = 50
+EPOCHS = 1
 utils.set_random_seed(SEED)
 SPLIT_SEED = utils.get_random_seed()
 
