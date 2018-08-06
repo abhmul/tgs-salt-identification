@@ -15,6 +15,7 @@ from kaggleutils import dump_args
 ORIG_IMG_SIZE = (101, 101)
 IMG_SIZE = (128, 128)
 EMPTY_THRESHOLD = 5
+USE_DEPTHS = False
 
 
 class SaltData(object):
@@ -37,6 +38,19 @@ class SaltData(object):
         self.glob_train_masks = os.path.join(self.path_to_train_masks, "*.png")
         self.glob_test_images = os.path.join(self.path_to_test_images, "*.png")
 
+        self.__depths = None
+
+    @property
+    def depths(self):
+        if self.__depths is not None:
+            return self.__depths
+        logging.info("Loading depths from {self.path_to_depths} "
+                     "".format(**locals()))
+        unnorm_depths = pd.read_csv(self.path_to_depths, index_col=0)
+        self.__depths = (unnorm_depths - unnorm_depths.mean()) / \
+            unnorm_depths.std()
+        return self.__depths
+
     def load_train(self):
         # Just load the data into a numpy dataset, it ain't that big
         logging.info("Loading train images from {self.path_to_train_images} "
@@ -45,15 +59,17 @@ class SaltData(object):
         img_paths = sorted(glob(self.glob_train_images))
         mask_paths = set(glob(self.glob_train_masks))  # Use set to look up
         # Initialize the numpy data containers
-        x = np.zeros((len(img_paths), ) + self.img_size + (3, ))
+        x = np.zeros((len(img_paths), ) + self.img_size + (4, ))
         y = np.zeros((len(mask_paths), ) + self.img_size + (1,))
         ids = []
         for i, img_path in enumerate(tqdm(img_paths)):
-            x[i] = ImageDataset.load_img(
-                img_path, img_size=None, mode=self.mode)[0]
-            # Load the mask
             img_basename = os.path.basename(img_path)
             ids.append(os.path.splitext(img_basename)[0])
+
+            x[i, ..., :3] = ImageDataset.load_img(
+                img_path, img_size=None, mode=self.mode)[0]
+            x[i, ..., 3] = self.depths.loc[ids[-1]]
+            # Load the mask
             mask_path = os.path.join(self.path_to_train_masks, img_basename)
             # Use the 0 mask if its not there
             if mask_path not in mask_paths:
@@ -72,16 +88,26 @@ class SaltData(object):
                      " and glob {self.glob_test_images}".format(**locals()))
         img_paths = sorted(glob(self.glob_test_images))
         # Initialize the numpy data containers
-        x = np.zeros((len(img_paths), ) + self.img_size + (3, ))
+        x = np.zeros((len(img_paths), ) + self.img_size + (4, ))
         ids = []
         for i, img_path in enumerate(tqdm(img_paths)):
-            x[i] = ImageDataset.load_img(
+            x[i, ..., :3] = ImageDataset.load_img(
                 img_path, img_size=None, mode=self.mode)[0]
+            x[i, ..., :4] = self.depths.loc[ids[-1]] / MAX_DEPTH
             # Load the mask
             img_basename = os.path.basename(img_path)
             ids.append(os.path.splitext(img_basename)[0])
         print("Xte Shape:", x.shape)
         return NpDataset(x.astype('float32'), ids=np.array(ids))
+
+    @staticmethod
+    def get_stratification_categories(train_dataset, num_categories=10):
+        bounds = np.linspace(0.0, 1.0, num=num_categories)
+        coverage = np.sum(train_dataset.y, axis=(1, 2, 3))
+        categories = np.zeros(len(train_dataset))
+        for i in range(1, len(bounds)):
+            categories[(coverage > bounds[i-1]) & (coverage <= bounds[i])] = i
+        return categories
 
     @staticmethod
     def save_submission(save_name, preds, test_ids, cutoff=0.5):

@@ -28,10 +28,10 @@ logger.setLevel(logging.INFO)
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
 MODEL = models.unet
-RUN_ID = "unet-test-dilation-neck"
+RUN_ID = "unet-test-pretrained"
 SEED = 42
-BATCH_SIZE = 32
-EPOCHS = 1
+BATCH_SIZE = 16
+EPOCHS = 100
 utils.set_random_seed(SEED)
 SPLIT_SEED = utils.get_random_seed()
 
@@ -106,7 +106,7 @@ def train(data: SaltData, plot=True):
     model = MODEL()
     train_data, val_data = train_data.validation_split(
         split=0.1, shuffle=True, seed=SPLIT_SEED, stratified=True,
-        stratify_by=np.all(train_data.y == 0., axis=(1, 2, 3)))
+        stratify_by=data.get_stratification_categories(train_data))
     train_model(model, train_data, val_data, plot=plot)
     # Load the model and score it
     model.load_state(utils.get_model_path(RUN_ID))
